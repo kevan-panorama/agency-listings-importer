@@ -4,6 +4,7 @@ import { useState } from "react";
 
 export default function Home() {
   const [rawEmail, setRawEmail] = useState("");
+  const [rawHtml, setRawHtml] = useState("");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -20,9 +21,12 @@ export default function Home() {
       const res = await fetch("/api/agency-importer/extract", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({ rawEmail })
+        body: JSON.stringify({
+          rawEmail,
+          rawHtml,
+        }),
       });
 
       const json = await res.json();
@@ -50,13 +54,14 @@ export default function Home() {
       const res = await fetch("/api/agency-importer/save", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           rawEmail,
+          rawHtml,
           listing: result.listing,
-          rawExtractedJson: result.rawExtractedJson
-        })
+          rawExtractedJson: result.rawExtractedJson,
+        }),
       });
 
       const json = await res.json();
@@ -73,133 +78,329 @@ export default function Home() {
     }
   }
 
+  async function handleHtmlFileUpload(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const text = await file.text();
+    setRawHtml(text);
+  }
+
   const listing = result?.listing;
+  const htmlLinks = result?.htmlLinks;
 
   return (
-    <main style={{ padding: 40, fontFamily: "Arial", background: "#f5f3ee", minHeight: "100vh" }}>
-      <h1>Agency Listings Importer</h1>
-      <p>Paste an agency email and extract a CRM-ready listing draft.</p>
-
-      <textarea
-        value={rawEmail}
-        onChange={(e) => setRawEmail(e.target.value)}
-        placeholder="Paste agency email here..."
-        style={{
-          width: "100%",
-          minHeight: 260,
-          padding: 16,
-          fontSize: 15,
-          marginTop: 20,
-          borderRadius: 8,
-          border: "1px solid #ccc"
-        }}
-      />
-
-      <button
-        onClick={extractListing}
-        disabled={loading || !rawEmail.trim()}
-        style={{
-          marginTop: 16,
-          padding: "12px 22px",
-          fontSize: 16,
-          cursor: "pointer",
-          borderRadius: 8,
-          border: "none",
-          background: "#111",
-          color: "#fff"
-        }}
-      >
-        {loading ? "Extracting..." : "Extract Listing"}
-      </button>
-
-      {error && (
-        <p style={{ color: "red", marginTop: 20 }}>
-          {error}
+    <main
+      style={{
+        padding: 40,
+        fontFamily: "Arial, Helvetica, sans-serif",
+        background: "#f5f3ee",
+        minHeight: "100vh",
+      }}
+    >
+      <div style={{ maxWidth: 1400, margin: "0 auto" }}>
+        <h1 style={{ marginBottom: 8 }}>Agency Listings Importer</h1>
+        <p style={{ marginTop: 0, color: "#555" }}>
+          Paste the visible email text and upload or paste the original email
+          HTML to detect hidden buttons, property links and marketing material.
         </p>
-      )}
 
-      {saveMessage && (
-        <p style={{ color: "green", marginTop: 20 }}>
-          {saveMessage}
-        </p>
-      )}
+        <section
+          style={{
+            marginTop: 28,
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 24,
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              padding: 24,
+              borderRadius: 14,
+              border: "1px solid #e0ddd5",
+            }}
+          >
+            <h2 style={{ marginTop: 0 }}>1. Visible Email Text</h2>
+            <p style={{ color: "#666", fontSize: 14 }}>
+              Paste the copied email body from Outlook here.
+            </p>
 
-      {listing && (
-        <section style={{ marginTop: 32, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-          <div style={{ background: "#fff", padding: 24, borderRadius: 12 }}>
-            <h2>Original Email</h2>
-            <pre style={{ whiteSpace: "pre-wrap", fontSize: 14 }}>
-              {rawEmail}
-            </pre>
+            <textarea
+              value={rawEmail}
+              onChange={(e) => setRawEmail(e.target.value)}
+              placeholder="Paste visible agency email text here..."
+              style={{
+                width: "100%",
+                minHeight: 320,
+                padding: 16,
+                fontSize: 14,
+                borderRadius: 8,
+                border: "1px solid #ccc",
+                resize: "vertical",
+              }}
+            />
           </div>
 
-          <div style={{ background: "#fff", padding: 24, borderRadius: 12 }}>
-            <h2>Extracted Listing</h2>
+          <div
+            style={{
+              background: "#fff",
+              padding: 24,
+              borderRadius: 14,
+              border: "1px solid #e0ddd5",
+            }}
+          >
+            <h2 style={{ marginTop: 0 }}>2. Original Email HTML</h2>
+            <p style={{ color: "#666", fontSize: 14 }}>
+              Upload a saved .html email file, or paste the HTML source here.
+              This helps detect hidden links behind buttons and images.
+            </p>
 
-            <p><strong>Agency:</strong> {listing.agencyName}</p>
-            <p><strong>Contact:</strong> {listing.agencyContactName}</p>
-            <p><strong>Email:</strong> {listing.agencyEmail}</p>
-            <p><strong>Phone:</strong> {listing.agencyPhone}</p>
-
-            <hr />
-
-            <p><strong>Title:</strong> {listing.propertyTitle}</p>
-            <p><strong>Type:</strong> {listing.propertyType}</p>
-            <p><strong>Operation:</strong> {listing.operation}</p>
-            <p><strong>Address:</strong> {listing.address}</p>
-            <p><strong>City:</strong> {listing.city}</p>
-            <p><strong>Neighborhood:</strong> {listing.neighborhood}</p>
-
-            <p><strong>Bedrooms:</strong> {listing.bedrooms}</p>
-            <p><strong>Bathrooms:</strong> {listing.bathrooms}</p>
-            <p><strong>Guest Toilets:</strong> {listing.guestToilets}</p>
-            <p><strong>Built:</strong> {listing.surfaceSqm}</p>
-            <p><strong>Plot:</strong> {listing.plotSqm}</p>
-            <p><strong>Terrace:</strong> {listing.terraceSqm}</p>
-
-            <p><strong>Price:</strong> {listing.price}</p>
-            <p><strong>Commission:</strong> {listing.commission}</p>
-
-            <hr />
-
-            <p><strong>Description:</strong></p>
-            <p>{listing.description}</p>
-
-            <p><strong>Confidence:</strong> {listing.confidence}%</p>
-
-            <p><strong>Missing Fields:</strong></p>
-            <ul>
-              {listing.missingFields?.map((field, index) => (
-                <li key={index}>{field}</li>
-              ))}
-            </ul>
-
-            <p><strong>Detected Links:</strong></p>
-            <ul>
-              {listing.detectedLinks?.map((link, index) => (
-                <li key={index}>{link}</li>
-              ))}
-            </ul>
-
-            <button
-              onClick={saveDraft}
-              disabled={saving}
+            <input
+              type="file"
+              accept=".html,.htm,.txt"
+              onChange={handleHtmlFileUpload}
               style={{
-                marginTop: 20,
-                padding: "12px 22px",
-                fontSize: 16,
-                cursor: "pointer",
-                borderRadius: 8,
-                border: "none",
-                background: "#111",
-                color: "#fff"
+                display: "block",
+                marginBottom: 14,
               }}
-            >
-              {saving ? "Saving..." : "Save Draft"}
-            </button>
+            />
+
+            <textarea
+              value={rawHtml}
+              onChange={(e) => setRawHtml(e.target.value)}
+              placeholder="Paste original email HTML here, or upload an .html file..."
+              style={{
+                width: "100%",
+                minHeight: 280,
+                padding: 16,
+                fontSize: 13,
+                borderRadius: 8,
+                border: "1px solid #ccc",
+                resize: "vertical",
+                fontFamily: "monospace",
+              }}
+            />
           </div>
         </section>
-      )}
+
+        <button
+          onClick={extractListing}
+          disabled={loading || (!rawEmail.trim() && !rawHtml.trim())}
+          style={{
+            marginTop: 22,
+            padding: "14px 26px",
+            fontSize: 16,
+            cursor: loading ? "not-allowed" : "pointer",
+            borderRadius: 8,
+            border: "none",
+            background: "#111",
+            color: "#fff",
+            opacity: loading || (!rawEmail.trim() && !rawHtml.trim()) ? 0.6 : 1,
+          }}
+        >
+          {loading ? "Extracting..." : "Extract Listing"}
+        </button>
+
+        {error && (
+          <p style={{ color: "red", marginTop: 20 }}>
+            <strong>Error:</strong> {error}
+          </p>
+        )}
+
+        {saveMessage && (
+          <p style={{ color: "green", marginTop: 20 }}>
+            <strong>{saveMessage}</strong>
+          </p>
+        )}
+
+        {listing && (
+          <section
+            style={{
+              marginTop: 36,
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 24,
+              alignItems: "start",
+            }}
+          >
+            <div
+              style={{
+                background: "#fff",
+                padding: 24,
+                borderRadius: 14,
+                border: "1px solid #e0ddd5",
+              }}
+            >
+              <h2 style={{ marginTop: 0 }}>Source Review</h2>
+
+              <h3>Visible Email</h3>
+              <pre
+                style={{
+                  whiteSpace: "pre-wrap",
+                  fontSize: 13,
+                  background: "#f7f7f7",
+                  padding: 16,
+                  borderRadius: 8,
+                  maxHeight: 280,
+                  overflow: "auto",
+                }}
+              >
+                {rawEmail || "No visible email text provided."}
+              </pre>
+
+              <h3>Detected HTML Links</h3>
+
+              <p>
+                <strong>Property Links:</strong>
+              </p>
+              <LinkList links={htmlLinks?.propertyLinks} />
+
+              <p>
+                <strong>Marketing Material Links:</strong>
+              </p>
+              <LinkList links={htmlLinks?.marketingMaterialLinks} />
+
+              <p>
+                <strong>Photo Links:</strong>
+              </p>
+              <LinkList links={htmlLinks?.photoLinks} />
+
+              <p>
+                <strong>Document Links:</strong>
+              </p>
+              <LinkList links={htmlLinks?.documentLinks} />
+
+              <p>
+                <strong>Ignored Links:</strong>
+              </p>
+              <LinkList links={htmlLinks?.ignoredLinks} />
+            </div>
+
+            <div
+              style={{
+                background: "#fff",
+                padding: 24,
+                borderRadius: 14,
+                border: "1px solid #e0ddd5",
+              }}
+            >
+              <h2 style={{ marginTop: 0 }}>Extracted Listing</h2>
+
+              <Field label="Agency" value={listing.agencyName} />
+              <Field label="Contact" value={listing.agencyContactName} />
+              <Field label="Email" value={listing.agencyEmail} />
+              <Field label="Phone" value={listing.agencyPhone} />
+
+              <hr />
+
+              <Field label="Title" value={listing.propertyTitle} />
+              <Field label="Type" value={listing.propertyType} />
+              <Field label="Operation" value={listing.operation} />
+              <Field label="Source URL" value={listing.sourceUrl} />
+              <Field label="Address" value={listing.address} />
+              <Field label="City" value={listing.city} />
+              <Field label="Neighborhood" value={listing.neighborhood} />
+
+              <Field label="Bedrooms" value={listing.bedrooms} />
+              <Field label="Bathrooms" value={listing.bathrooms} />
+              <Field label="Guest Toilets" value={listing.guestToilets} />
+              <Field label="Built sqm" value={listing.surfaceSqm} />
+              <Field label="Plot sqm" value={listing.plotSqm} />
+              <Field label="Terrace sqm" value={listing.terraceSqm} />
+
+              <Field label="Price" value={listing.price} />
+              <Field label="Commission" value={listing.commission} />
+
+              <hr />
+
+              <p>
+                <strong>Description:</strong>
+              </p>
+              <p style={{ lineHeight: 1.6 }}>
+                {listing.description || "No description extracted."}
+              </p>
+
+              <p>
+                <strong>Internal Notes:</strong>
+              </p>
+              <p style={{ lineHeight: 1.6 }}>
+                {listing.internalNotes || "No internal notes."}
+              </p>
+
+              <Field label="Confidence" value={`${listing.confidence}%`} />
+
+              <p>
+                <strong>Missing Fields:</strong>
+              </p>
+              <SimpleList items={listing.missingFields} />
+
+              <p>
+                <strong>All Detected Links:</strong>
+              </p>
+              <LinkList links={listing.detectedLinks} />
+
+              <button
+                onClick={saveDraft}
+                disabled={saving}
+                style={{
+                  marginTop: 24,
+                  padding: "14px 26px",
+                  fontSize: 16,
+                  cursor: saving ? "not-allowed" : "pointer",
+                  borderRadius: 8,
+                  border: "none",
+                  background: "#111",
+                  color: "#fff",
+                  opacity: saving ? 0.6 : 1,
+                }}
+              >
+                {saving ? "Saving..." : "Save Draft"}
+              </button>
+            </div>
+          </section>
+        )}
+      </div>
     </main>
+  );
+}
+
+function Field({ label, value }) {
+  return (
+    <p style={{ margin: "8px 0" }}>
+      <strong>{label}:</strong> {value || "—"}
+    </p>
+  );
+}
+
+function SimpleList({ items }) {
+  if (!items || items.length === 0) {
+    return <p style={{ color: "#777" }}>None</p>;
+  }
+
+  return (
+    <ul>
+      {items.map((item, index) => (
+        <li key={index}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
+function LinkList({ links }) {
+  if (!links || links.length === 0) {
+    return <p style={{ color: "#777" }}>None detected</p>;
+  }
+
+  return (
+    <ul style={{ paddingLeft: 18 }}>
+      {links.map((link, index) => (
+        <li key={index} style={{ marginBottom: 8, wordBreak: "break-all" }}>
+          <a href={link} target="_blank" rel="noreferrer">
+            {link}
+          </a>
+        </li>
+      ))}
+    </ul>
   );
 }
