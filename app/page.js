@@ -2,6 +2,18 @@
 
 import { useRef, useState } from "react";
 
+const tabs = [
+  "Main",
+  "Descriptions",
+  "Images",
+  "Private",
+  "Commission",
+  "Attachments",
+  "Legal",
+  "MLS / Portals",
+  "Brain",
+];
+
 export default function Home() {
   const fileInputRef = useRef(null);
 
@@ -10,6 +22,7 @@ export default function Home() {
   const [htmlFileName, setHtmlFileName] = useState("");
   const [isDraggingHtml, setIsDraggingHtml] = useState(false);
 
+  const [activeTab, setActiveTab] = useState("Main");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -19,9 +32,11 @@ export default function Home() {
   async function readHtmlFile(file) {
     if (!file) return;
 
-    const validExtensions = [".html", ".htm", ".txt"];
     const lowerName = file.name.toLowerCase();
-    const isValid = validExtensions.some((ext) => lowerName.endsWith(ext));
+    const isValid =
+      lowerName.endsWith(".html") ||
+      lowerName.endsWith(".htm") ||
+      lowerName.endsWith(".txt");
 
     if (!isValid) {
       setError("Please upload an .html, .htm or .txt file.");
@@ -35,16 +50,13 @@ export default function Home() {
   }
 
   function handleHtmlFileUpload(event) {
-    const file = event.target.files?.[0];
-    readHtmlFile(file);
+    readHtmlFile(event.target.files?.[0]);
   }
 
   function handleHtmlDrop(event) {
     event.preventDefault();
     setIsDraggingHtml(false);
-
-    const file = event.dataTransfer.files?.[0];
-    readHtmlFile(file);
+    readHtmlFile(event.dataTransfer.files?.[0]);
   }
 
   function handleDragOver(event) {
@@ -57,16 +69,10 @@ export default function Home() {
     setIsDraggingHtml(false);
   }
 
-  function openFilePicker() {
-    fileInputRef.current?.click();
-  }
-
   function clearHtmlFile() {
     setRawHtml("");
     setHtmlFileName("");
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   async function extractListing() {
@@ -74,17 +80,18 @@ export default function Home() {
     setError("");
     setResult(null);
     setSaveMessage("");
+    setActiveTab("Main");
 
     try {
       const res = await fetch("/api/agency-importer/extract", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           rawEmail,
-          rawHtml
-        })
+          rawHtml,
+        }),
       });
 
       const json = await res.json();
@@ -112,14 +119,22 @@ export default function Home() {
       const res = await fetch("/api/agency-importer/save", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           rawEmail,
           rawHtml,
           listing: result.listing,
-          rawExtractedJson: result.rawExtractedJson
-        })
+          inmobalia: result.inmobalia,
+          sourceLinks: result.sourceLinks,
+          websiteVerification: result.websiteVerification,
+          importedImages: result.importedImages,
+          importedAttachments: result.importedAttachments,
+          verificationNotes: result.verificationNotes,
+          importBrainLog: result.importBrainLog,
+          missingFields: result.missingFields,
+          rawExtractedJson: result.rawExtractedJson,
+        }),
       });
 
       const json = await res.json();
@@ -128,7 +143,7 @@ export default function Home() {
         throw new Error(json.error || "Save failed");
       }
 
-      setSaveMessage("Draft saved successfully.");
+      setSaveMessage("Draft saved successfully in Supabase.");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -136,60 +151,50 @@ export default function Home() {
     }
   }
 
-  const listing = result?.listing;
-  const htmlLinks = result?.htmlLinks;
   const canExtract = rawEmail.trim() || rawHtml.trim();
+  const listing = result?.listing;
+  const inmobalia = result?.inmobalia;
 
   return (
-    <main
-      style={{
-        padding: 40,
-        fontFamily: "Arial, Helvetica, sans-serif",
-        background: "#f5f3ee",
-        minHeight: "100vh"
-      }}
-    >
-      <div style={{ maxWidth: 1400, margin: "0 auto" }}>
-        <header style={{ marginBottom: 28 }}>
-          <p
-            style={{
-              margin: 0,
-              fontSize: 13,
-              textTransform: "uppercase",
-              letterSpacing: 1.2,
-              color: "#777"
-            }}
-          >
-            Panorama Internal Tool
-          </p>
-          <h1 style={{ margin: "8px 0 8px" }}>Agency Listings Importer</h1>
-          <p style={{ margin: 0, color: "#555", maxWidth: 900 }}>
-            Paste the visible email text and upload the original email HTML to
-            detect hidden buttons, property links, marketing material folders,
-            photos and documents.
-          </p>
+    <main style={pageStyle}>
+      <div style={{ maxWidth: 1500, margin: "0 auto" }}>
+        <header style={headerStyle}>
+          <div>
+            <p style={eyebrowStyle}>Panorama Internal Tool</p>
+            <h1 style={{ margin: "8px 0" }}>Agency Listings Importer</h1>
+            <p style={{ margin: 0, color: "#555", maxWidth: 900 }}>
+              Import agency emails, extract hidden links, verify property data
+              from websites and prepare an Inmobalia-ready draft.
+            </p>
+          </div>
+
+          {result && (
+            <button
+              onClick={saveDraft}
+              disabled={saving}
+              style={{
+                ...primaryButtonStyle,
+                opacity: saving ? 0.6 : 1,
+              }}
+            >
+              {saving ? "Saving..." : "Save Draft"}
+            </button>
+          )}
         </header>
 
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 24
-          }}
-        >
+        <section style={inputGridStyle}>
           <Panel title="1. Visible Email Text">
             <p style={helperTextStyle}>
               Paste the copied body of the agency email from Outlook here.
             </p>
-
             <textarea
               value={rawEmail}
               onChange={(e) => setRawEmail(e.target.value)}
               placeholder="Paste visible agency email text here..."
               style={{
                 ...textareaStyle,
-                minHeight: 360,
-                fontFamily: "Arial, Helvetica, sans-serif"
+                minHeight: 300,
+                fontFamily: "Arial, Helvetica, sans-serif",
               }}
             />
           </Panel>
@@ -197,7 +202,7 @@ export default function Home() {
           <Panel title="2. Original Email HTML">
             <p style={helperTextStyle}>
               Drag and drop the saved HTML email file, click to choose it from
-              your computer, or paste the HTML source manually.
+              your computer, or paste the HTML manually.
             </p>
 
             <input
@@ -210,60 +215,37 @@ export default function Home() {
 
             <button
               type="button"
-              onClick={openFilePicker}
+              onClick={() => fileInputRef.current?.click()}
               onDrop={handleHtmlDrop}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               style={{
                 width: "100%",
-                padding: "34px 20px",
+                padding: "30px 20px",
                 borderRadius: 14,
                 border: isDraggingHtml ? "2px solid #111" : "2px dashed #aaa",
                 background: isDraggingHtml ? "#eee9df" : "#fafafa",
                 cursor: "pointer",
                 textAlign: "center",
-                marginBottom: 14
+                marginBottom: 14,
               }}
             >
               <strong style={{ fontSize: 16 }}>
-                {isDraggingHtml
-                  ? "Drop the HTML file here"
-                  : "Drop HTML file here"}
+                {isDraggingHtml ? "Drop the HTML file here" : "Drop HTML file here"}
               </strong>
               <br />
               <span style={{ color: "#666", fontSize: 14 }}>
                 or click to choose a file from your computer
               </span>
-              <br />
-              <span style={{ color: "#888", fontSize: 12 }}>
-                Accepted: .html, .htm, .txt
-              </span>
             </button>
 
             {htmlFileName && (
-              <div
-                style={{
-                  background: "#f0f7ef",
-                  color: "#236423",
-                  border: "1px solid #cfe8ce",
-                  padding: "10px 12px",
-                  borderRadius: 8,
-                  marginBottom: 12,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  alignItems: "center"
-                }}
-              >
+              <div style={loadedFileStyle}>
                 <span>
                   Loaded: <strong>{htmlFileName}</strong> ·{" "}
                   {rawHtml.length.toLocaleString()} characters
                 </span>
-                <button
-                  type="button"
-                  onClick={clearHtmlFile}
-                  style={smallButtonStyle}
-                >
+                <button type="button" onClick={clearHtmlFile} style={smallButtonStyle}>
                   Clear
                 </button>
               </div>
@@ -278,9 +260,9 @@ export default function Home() {
               placeholder="Paste original email HTML here, or upload an .html file..."
               style={{
                 ...textareaStyle,
-                minHeight: 220,
+                minHeight: 180,
                 fontFamily: "monospace",
-                fontSize: 13
+                fontSize: 13,
               }}
             />
           </Panel>
@@ -293,10 +275,10 @@ export default function Home() {
             style={{
               ...primaryButtonStyle,
               opacity: loading || !canExtract ? 0.6 : 1,
-              cursor: loading || !canExtract ? "not-allowed" : "pointer"
+              cursor: loading || !canExtract ? "not-allowed" : "pointer",
             }}
           >
-            {loading ? "Extracting..." : "Extract Listing"}
+            {loading ? "Extracting & Crawling..." : "Extract Listing"}
           </button>
 
           {result && (
@@ -328,132 +310,289 @@ export default function Home() {
 
         {loading && (
           <div style={{ ...panelStyle, marginTop: 28 }}>
-            <strong>Extracting listing draft...</strong>
+            <strong>Importer brain running...</strong>
             <p style={{ marginBottom: 0, color: "#666" }}>
-              Reading visible text, scanning HTML links, and preparing a
-              CRM-ready listing.
+              Reading email HTML, extracting hidden links, crawling property
+              page, checking photos and preparing Inmobalia sections.
             </p>
           </div>
         )}
 
-        {listing && (
-          <section
-            style={{
-              marginTop: 36,
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 24,
-              alignItems: "start"
-            }}
-          >
-            <Panel title="Source Review">
-              <h3>Visible Email</h3>
-              <pre
-                style={{
-                  whiteSpace: "pre-wrap",
-                  fontSize: 13,
-                  background: "#f7f7f7",
-                  padding: 16,
-                  borderRadius: 8,
-                  maxHeight: 280,
-                  overflow: "auto"
-                }}
-              >
-                {rawEmail || "No visible email text provided."}
-              </pre>
+        {result && listing && inmobalia && (
+          <section style={{ marginTop: 36 }}>
+            <SummaryCards result={result} />
 
-              <h3>Detected HTML Links</h3>
+            <div style={resultLayoutStyle}>
+              <Panel title="Source & Verification">
+                <Field label="Agency" value={listing.agencyName} />
+                <Field label="Contact" value={listing.agencyContactName} />
+                <Field label="Email" value={listing.agencyEmail} />
+                <Field label="Phone" value={listing.agencyPhone} />
+                <Field label="Property URL" value={listing.sourceUrl} />
+                <Field
+                  label="Website crawled"
+                  value={result.websiteVerification?.crawled ? "Yes" : "No"}
+                />
+                {result.websiteVerification?.error && (
+                  <Field
+                    label="Website error"
+                    value={result.websiteVerification.error}
+                  />
+                )}
 
-              <LinkSection
-                title="Property Links"
-                links={htmlLinks?.propertyLinks}
-              />
-              <LinkSection
-                title="Marketing Material Links"
-                links={htmlLinks?.marketingMaterialLinks}
-              />
-              <LinkSection title="Photo Links" links={htmlLinks?.photoLinks} />
-              <LinkSection
-                title="Document Links"
-                links={htmlLinks?.documentLinks}
-              />
-              <LinkSection
-                title="Ignored Links"
-                links={htmlLinks?.ignoredLinks}
-              />
-            </Panel>
+                <h3>Verification Notes</h3>
+                <SimpleList items={result.verificationNotes} />
 
-            <Panel title="Extracted Listing">
-              <Field label="Agency" value={listing.agencyName} />
-              <Field label="Contact" value={listing.agencyContactName} />
-              <Field label="Email" value={listing.agencyEmail} />
-              <Field label="Phone" value={listing.agencyPhone} />
+                <h3>Missing Fields</h3>
+                <SimpleList items={result.missingFields} />
 
-              <hr />
+                <h3>Property Links</h3>
+                <LinkList links={result.sourceLinks?.emailLinks?.propertyLinks} />
 
-              <Field label="Title" value={listing.propertyTitle} />
-              <Field label="Type" value={listing.propertyType} />
-              <Field label="Operation" value={listing.operation} />
-              <Field label="Source URL" value={listing.sourceUrl} />
-              <Field label="Address" value={listing.address} />
-              <Field label="City" value={listing.city} />
-              <Field label="Neighborhood" value={listing.neighborhood} />
+                <h3>Marketing Material Links</h3>
+                <LinkList
+                  links={result.sourceLinks?.emailLinks?.marketingMaterialLinks}
+                />
+              </Panel>
 
-              <Field label="Bedrooms" value={listing.bedrooms} />
-              <Field label="Bathrooms" value={listing.bathrooms} />
-              <Field label="Guest Toilets" value={listing.guestToilets} />
-              <Field label="Built sqm" value={listing.surfaceSqm} />
-              <Field label="Plot sqm" value={listing.plotSqm} />
-              <Field label="Terrace sqm" value={listing.terraceSqm} />
+              <div>
+                <div style={tabsStyle}>
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      style={{
+                        ...tabButtonStyle,
+                        background: activeTab === tab ? "#111" : "#fff",
+                        color: activeTab === tab ? "#fff" : "#111",
+                      }}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
 
-              <Field label="Price" value={listing.price} />
-              <Field label="Commission" value={listing.commission} />
-
-              <hr />
-
-              <p>
-                <strong>Description:</strong>
-              </p>
-              <p style={{ lineHeight: 1.6 }}>
-                {listing.description || "No description extracted."}
-              </p>
-
-              <p>
-                <strong>Internal Notes:</strong>
-              </p>
-              <p style={{ lineHeight: 1.6 }}>
-                {listing.internalNotes || "No internal notes."}
-              </p>
-
-              <Field label="Confidence" value={`${listing.confidence}%`} />
-
-              <p>
-                <strong>Missing Fields:</strong>
-              </p>
-              <SimpleList items={listing.missingFields} />
-
-              <p>
-                <strong>All Detected Links:</strong>
-              </p>
-              <LinkList links={listing.detectedLinks} />
-
-              <button
-                onClick={saveDraft}
-                disabled={saving}
-                style={{
-                  ...primaryButtonStyle,
-                  marginTop: 24,
-                  opacity: saving ? 0.6 : 1,
-                  cursor: saving ? "not-allowed" : "pointer"
-                }}
-              >
-                {saving ? "Saving..." : "Save Draft"}
-              </button>
-            </Panel>
+                <Panel title={`Inmobalia: ${activeTab}`}>
+                  {activeTab === "Main" && <MainTab data={inmobalia.main} />}
+                  {activeTab === "Descriptions" && (
+                    <DescriptionsTab data={inmobalia.descriptions} />
+                  )}
+                  {activeTab === "Images" && (
+                    <ImagesTab data={inmobalia.images} images={result.importedImages} />
+                  )}
+                  {activeTab === "Private" && (
+                    <PrivateTab data={inmobalia.private} />
+                  )}
+                  {activeTab === "Commission" && (
+                    <CommissionTab data={inmobalia.commission} />
+                  )}
+                  {activeTab === "Attachments" && (
+                    <AttachmentsTab
+                      data={inmobalia.attachments}
+                      attachments={result.importedAttachments}
+                    />
+                  )}
+                  {activeTab === "Legal" && <LegalTab data={inmobalia.legal} />}
+                  {activeTab === "MLS / Portals" && (
+                    <MlsTab data={inmobalia.mlsPortals} />
+                  )}
+                  {activeTab === "Brain" && <BrainTab result={result} />}
+                </Panel>
+              </div>
+            </div>
           </section>
         )}
       </div>
     </main>
+  );
+}
+
+function SummaryCards({ result }) {
+  const listing = result.listing;
+  const images = result.importedImages || [];
+
+  return (
+    <div style={summaryGridStyle}>
+      <MiniCard label="Title" value={listing.propertyTitle || "—"} />
+      <MiniCard label="Price" value={listing.price ? `${listing.price} €` : "—"} />
+      <MiniCard
+        label="Beds / Baths"
+        value={`${listing.bedrooms || "—"} / ${listing.bathrooms || "—"}`}
+      />
+      <MiniCard label="Images detected" value={images.length} />
+      <MiniCard label="Confidence" value={`${listing.confidence || 0}%`} />
+    </div>
+  );
+}
+
+function MainTab({ data }) {
+  return (
+    <Grid>
+      <Field label="Reference" value={data.reference} />
+      <Field label="Type" value={data.type} />
+      <Field label="Development" value={data.development} />
+      <Field label="Location" value={data.location} />
+      <Field label="For sale" value={yesNo(data.forSale)} />
+      <Field label="Sale price" value={data.salePrice} />
+      <Field label="Bedrooms" value={data.bedrooms} />
+      <Field label="Bathrooms" value={data.bathrooms} />
+      <Field label="Toilets" value={data.toilets} />
+      <Field label="Suite baths" value={data.suiteBaths} />
+      <Field label="Built" value={data.built} />
+      <Field label="Plot" value={data.plot} />
+      <Field label="Terrace" value={data.terrace} />
+      <Field label="Interior" value={data.interior} />
+      <Field label="Pool" value={data.pool} />
+      <Field label="Garden" value={data.garden} />
+      <Field label="Garage" value={data.garage} />
+      <Field label="Orientation" value={data.orientation} />
+      <Field label="Community fees" value={data.communityFees} />
+      <Field label="IBI" value={data.ibi} />
+      <Field label="Garbage tax" value={data.garbageTax} />
+      <Field label="Exclusive" value={yesNo(data.exclusive)} />
+      <Field label="Luxury" value={yesNo(data.luxury)} />
+      <Field label="Direct" value={yesNo(data.direct)} />
+    </Grid>
+  );
+}
+
+function DescriptionsTab({ data }) {
+  return (
+    <>
+      <Field label="Language" value={data.language} />
+      <TextBlock label="Short description" value={data.shortDescription} />
+      <TextBlock label="Description" value={data.description} />
+      <TextBlock label="Price description" value={data.priceDescription} />
+      <TextBlock label="Extra description" value={data.extraDescription} />
+
+      <h3>Views</h3>
+      <Grid>
+        {Object.entries(data.views || {}).map(([key, value]) => (
+          <Field key={key} label={key} value={yesNo(value)} />
+        ))}
+      </Grid>
+
+      <h3>Features</h3>
+      <SimpleList items={data.features} />
+    </>
+  );
+}
+
+function ImagesTab({ data, images }) {
+  return (
+    <>
+      <Field label="Image count" value={data.imageCount || images?.length || 0} />
+      <Field label="Main image" value={data.mainImage} />
+      <Field label="Gallery URL" value={data.sourceGalleryUrl} />
+
+      <h3>Detected Images</h3>
+      <ImageGrid images={images || data.imageUrls || []} />
+    </>
+  );
+}
+
+function PrivateTab({ data }) {
+  return (
+    <Grid>
+      <Field label="Seller" value={data.seller} />
+      <Field label="Listed by" value={data.listedBy} />
+      <Field label="GPS" value={data.gpsCoordinates} />
+      <Field label="Cadastral reference" value={data.cadastralReference} />
+      <Field label="Postcode" value={data.postcode} />
+      <Field label="Zone" value={data.zone} />
+      <Field label="Address" value={data.address} />
+      <Field label="Visiting conditions" value={data.visitingConditions} />
+      <Field label="Key status" value={data.keyStatus} />
+      <Field label="Sale boards" value={yesNo(data.saleBoards)} />
+      <Field label="Keys" value={yesNo(data.keys)} />
+      <Field label="Internal notes" value={data.internalNotes} />
+    </Grid>
+  );
+}
+
+function CommissionTab({ data }) {
+  return (
+    <Grid>
+      <Field label="Sale commission" value={data.saleCommission} />
+      <Field label="Internal comments" value={data.internalComments} />
+      <Field label="Network commission total" value={data.networkCommissionTotal} />
+      <Field label="Network commission split" value={data.networkCommissionSplit} />
+      <Field label="Own commission total" value={data.ownCommissionTotal} />
+      <Field label="Own commission split" value={data.ownCommissionSplit} />
+      <Field label="Public comments" value={data.publicComments} />
+    </Grid>
+  );
+}
+
+function AttachmentsTab({ data, attachments }) {
+  return (
+    <>
+      <Field label="Marketing folder" value={data.marketingMaterialFolder} />
+      <Field label="Drive folder" value={data.driveFolder} />
+      <Field label="Dropbox folder" value={data.dropboxFolder} />
+
+      <h3>Detected Attachment / Source Links</h3>
+      <LinkList links={attachments || data.links} />
+    </>
+  );
+}
+
+function LegalTab({ data }) {
+  return (
+    <Grid>
+      <Field
+        label="Energy certification in process"
+        value={yesNo(data.energyCertificationInProcess)}
+      />
+      <Field label="Cert consumption" value={data.certConsumption} />
+      <Field label="Consumption" value={data.consumption} />
+      <Field label="Cert emission" value={data.certEmission} />
+      <Field label="Emission" value={data.emission} />
+      <Field label="Touristic code" value={data.touristicCode} />
+      <Field label="Rateable value" value={data.rateableValue} />
+      <Field label="Property registry" value={data.propertyRegistry} />
+      <Field label="Copy nota simple" value={yesNo(data.copyNotaSimple)} />
+      <Field label="Copy IBI bills" value={yesNo(data.copyIbiBills)} />
+      <Field label="Copy plans" value={yesNo(data.copyPlans)} />
+      <Field label="Agency agreement" value={yesNo(data.agencyAgreement)} />
+    </Grid>
+  );
+}
+
+function MlsTab({ data }) {
+  return (
+    <>
+      <Grid>
+        <Field label="Shared sales" value={yesNo(data.inmobaliaSharedSales)} />
+        <Field label="Shared rent" value={yesNo(data.inmobaliaSharedRent)} />
+        <Field label="Clone/web permission" value={data.cloneWebPermission} />
+        <Field label="Portal restrictions" value={data.portalRestrictions} />
+      </Grid>
+
+      <h3>Portals / Feeds</h3>
+      <Grid>
+        {Object.entries(data.portalsFeeds || {}).map(([key, value]) => (
+          <Field key={key} label={key} value={yesNo(value)} />
+        ))}
+      </Grid>
+    </>
+  );
+}
+
+function BrainTab({ result }) {
+  return (
+    <>
+      <h3>Brain Workflow</h3>
+      <SimpleList items={result.importBrainLog} />
+
+      <h3>Website Verification</h3>
+      <pre style={preStyle}>
+        {JSON.stringify(result.websiteVerification, null, 2)}
+      </pre>
+
+      <h3>Readable HTML Preview</h3>
+      <pre style={preStyle}>{result.readableHtmlTextPreview}</pre>
+    </>
   );
 }
 
@@ -466,22 +605,25 @@ function Panel({ title, children }) {
   );
 }
 
+function Grid({ children }) {
+  return <div style={fieldGridStyle}>{children}</div>;
+}
+
 function Field({ label, value }) {
   return (
-    <p style={{ margin: "8px 0" }}>
-      <strong>{label}:</strong> {value || "—"}
-    </p>
+    <div style={fieldStyle}>
+      <span style={fieldLabelStyle}>{label}</span>
+      <span style={fieldValueStyle}>{value || "—"}</span>
+    </div>
   );
 }
 
-function LinkSection({ title, links }) {
+function TextBlock({ label, value }) {
   return (
-    <>
-      <p>
-        <strong>{title}:</strong>
-      </p>
-      <LinkList links={links} />
-    </>
+    <div style={{ marginBottom: 18 }}>
+      <strong>{label}</strong>
+      <div style={textBlockStyle}>{value || "—"}</div>
+    </div>
   );
 }
 
@@ -517,17 +659,99 @@ function LinkList({ links }) {
   );
 }
 
+function ImageGrid({ images }) {
+  if (!images || images.length === 0) {
+    return <p style={{ color: "#777" }}>No images detected yet.</p>;
+  }
+
+  return (
+    <div style={imageGridStyle}>
+      {images.slice(0, 30).map((url, index) => (
+        <a key={index} href={url} target="_blank" rel="noreferrer">
+          <img src={url} alt="" style={imageStyle} />
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function MiniCard({ label, value }) {
+  return (
+    <div style={miniCardStyle}>
+      <span style={{ color: "#777", fontSize: 13 }}>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function yesNo(value) {
+  return value ? "Yes" : "No";
+}
+
+const pageStyle = {
+  padding: 40,
+  fontFamily: "Arial, Helvetica, sans-serif",
+  background: "#f5f3ee",
+  minHeight: "100vh",
+};
+
+const headerStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 20,
+  alignItems: "flex-start",
+  marginBottom: 28,
+};
+
+const eyebrowStyle = {
+  margin: 0,
+  fontSize: 13,
+  textTransform: "uppercase",
+  letterSpacing: 1.2,
+  color: "#777",
+};
+
+const inputGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 24,
+};
+
+const resultLayoutStyle = {
+  display: "grid",
+  gridTemplateColumns: "360px 1fr",
+  gap: 24,
+  alignItems: "start",
+  marginTop: 24,
+};
+
+const summaryGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(5, 1fr)",
+  gap: 14,
+};
+
+const miniCardStyle = {
+  background: "#fff",
+  border: "1px solid #e0ddd5",
+  borderRadius: 12,
+  padding: 16,
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+};
+
 const panelStyle = {
   background: "#fff",
   padding: 24,
   borderRadius: 14,
-  border: "1px solid #e0ddd5"
+  border: "1px solid #e0ddd5",
 };
 
 const helperTextStyle = {
   color: "#666",
   fontSize: 14,
-  lineHeight: 1.5
+  lineHeight: 1.5,
 };
 
 const textareaStyle = {
@@ -536,7 +760,20 @@ const textareaStyle = {
   fontSize: 14,
   borderRadius: 8,
   border: "1px solid #ccc",
-  resize: "vertical"
+  resize: "vertical",
+};
+
+const loadedFileStyle = {
+  background: "#f0f7ef",
+  color: "#236423",
+  border: "1px solid #cfe8ce",
+  padding: "10px 12px",
+  borderRadius: 8,
+  marginBottom: 12,
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "center",
 };
 
 const primaryButtonStyle = {
@@ -545,7 +782,8 @@ const primaryButtonStyle = {
   borderRadius: 8,
   border: "none",
   background: "#111",
-  color: "#fff"
+  color: "#fff",
+  cursor: "pointer",
 };
 
 const secondaryButtonStyle = {
@@ -555,7 +793,7 @@ const secondaryButtonStyle = {
   border: "1px solid #bbb",
   background: "#fff",
   color: "#111",
-  cursor: "pointer"
+  cursor: "pointer",
 };
 
 const smallButtonStyle = {
@@ -563,5 +801,78 @@ const smallButtonStyle = {
   borderRadius: 6,
   border: "1px solid #aaa",
   background: "#fff",
-  cursor: "pointer"
+  cursor: "pointer",
+};
+
+const tabsStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8,
+  marginBottom: 14,
+};
+
+const tabButtonStyle = {
+  padding: "10px 14px",
+  borderRadius: 8,
+  border: "1px solid #bbb",
+  cursor: "pointer",
+};
+
+const fieldGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 12,
+};
+
+const fieldStyle = {
+  border: "1px solid #e2e2e2",
+  borderRadius: 8,
+  padding: 10,
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+};
+
+const fieldLabelStyle = {
+  color: "#777",
+  fontSize: 12,
+};
+
+const fieldValueStyle = {
+  color: "#111",
+  fontSize: 14,
+  wordBreak: "break-word",
+};
+
+const textBlockStyle = {
+  marginTop: 8,
+  background: "#f7f7f7",
+  padding: 14,
+  borderRadius: 8,
+  lineHeight: 1.6,
+  whiteSpace: "pre-wrap",
+};
+
+const imageGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, 1fr)",
+  gap: 12,
+};
+
+const imageStyle = {
+  width: "100%",
+  height: 150,
+  objectFit: "cover",
+  borderRadius: 8,
+  border: "1px solid #ddd",
+};
+
+const preStyle = {
+  background: "#111",
+  color: "#0f0",
+  padding: 16,
+  borderRadius: 8,
+  whiteSpace: "pre-wrap",
+  maxHeight: 350,
+  overflow: "auto",
 };
