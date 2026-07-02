@@ -64,14 +64,7 @@ export async function POST(req) {
       crawled: false,
       readableText: "",
       links: [],
-      classifiedLinks: {
-        detectedLinks: [],
-        photoLinks: [],
-        documentLinks: [],
-        marketingMaterialLinks: [],
-        propertyLinks: [],
-        ignoredLinks: [],
-      },
+      classifiedLinks: emptyClassifiedLinks(),
       error: "",
     };
 
@@ -102,8 +95,6 @@ READABLE TEXT EXTRACTED FROM PROPERTY WEBSITE:
 ${websiteData.readableText}
 `.trim();
 
-    const schema = getExtractionSchema();
-
     const prompt = `
 You are Panorama's Agency Listings Importer.
 
@@ -128,6 +119,8 @@ Workflow you must follow:
 8. Add verification notes.
 
 Rules:
+- Return only valid JSON.
+- Do not wrap the JSON in markdown.
 - Ignore invisible characters, tracking text, footer text, unsubscribe text, copyright footer, social links, font links, and Mailchimp tracking links.
 - Do not invent exact address, cadastral reference, GPS, seller private info, legal data, or documents.
 - Extract only information that is present or strongly implied.
@@ -151,6 +144,50 @@ Rules:
 Important CRM fields:
 ${requiredCrmFields.join(", ")}
 
+Return exactly this JSON structure:
+{
+  "listing": {
+    "agencyName": "",
+    "agencyContactName": "",
+    "agencyEmail": "",
+    "agencyPhone": "",
+    "sourceUrl": "",
+    "propertyTitle": "",
+    "propertyType": "",
+    "operation": "",
+    "address": "",
+    "city": "",
+    "neighborhood": "",
+    "bedrooms": "",
+    "bathrooms": "",
+    "guestToilets": "",
+    "surfaceSqm": "",
+    "plotSqm": "",
+    "terraceSqm": "",
+    "price": "",
+    "commission": "",
+    "description": "",
+    "internalNotes": "",
+    "detectedLinks": [],
+    "photoLinks": [],
+    "documentLinks": [],
+    "missingFields": [],
+    "confidence": 0
+  },
+  "inmobalia": {
+    "main": {},
+    "descriptions": {},
+    "images": {},
+    "private": {},
+    "commission": {},
+    "attachments": {},
+    "legal": {},
+    "mlsPortals": {}
+  },
+  "missingFields": [],
+  "verificationNotes": []
+}
+
 Source links and classified links:
 ${JSON.stringify(sourceLinks, null, 2)}
 
@@ -169,10 +206,7 @@ ${combinedReadableText.slice(0, 45000)}
         input: prompt,
         text: {
           format: {
-            type: "json_schema",
-            name: "agency_inmobalia_import",
-            strict: true,
-            schema,
+            type: "json_object",
           },
         },
       }),
@@ -205,7 +239,20 @@ ${combinedReadableText.slice(0, 45000)}
       );
     }
 
-    const parsed = JSON.parse(outputText);
+    let parsed;
+
+    try {
+      parsed = JSON.parse(outputText);
+    } catch (parseError) {
+      return NextResponse.json(
+        {
+          error: "OpenAI returned invalid JSON",
+          details: parseError.message,
+          outputText,
+        },
+        { status: 500 }
+      );
+    }
 
     const listing = normalizeAgencyListing(parsed.listing || {});
     const mappedFromListing = mapListingToInmobalia(listing);
@@ -237,20 +284,19 @@ ${combinedReadableText.slice(0, 45000)}
       ]),
     };
 
+    const finalImageUrls = unique([
+      ...(inmobalia.images?.imageUrls || []),
+      ...mergedListing.photoLinks,
+    ]).filter(isLikelyUsefulImage);
+
     const finalInmobalia = normalizeInmobalia({
       ...inmobalia,
       images: {
         ...inmobalia.images,
-        imageUrls: unique([
-          ...(inmobalia.images?.imageUrls || []),
-          ...mergedListing.photoLinks,
-        ]),
+        imageUrls: finalImageUrls,
         sourceEmailImages: emailPhotoLinks.filter(isLikelyUsefulImage),
         sourceWebsiteImages: websitePhotoLinks.filter(isLikelyUsefulImage),
-        imageCount: unique([
-          ...(inmobalia.images?.imageUrls || []),
-          ...mergedListing.photoLinks,
-        ]).length,
+        imageCount: finalImageUrls.length,
         sourceGalleryUrl:
           inmobalia.images?.sourceGalleryUrl ||
           websiteData.classifiedLinks.photoLinks?.[0] ||
@@ -309,8 +355,7 @@ async function crawlWebsite(url) {
     const res = await fetch(url, {
       method: "GET",
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (compatible; PanoramaAgencyImporter/1.0)",
+        "User-Agent": "Mozilla/5.0 (compatible; PanoramaAgencyImporter/1.0)",
         Accept:
           "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
@@ -323,14 +368,7 @@ async function crawlWebsite(url) {
         crawled: false,
         readableText: "",
         links: [],
-        classifiedLinks: {
-          detectedLinks: [],
-          photoLinks: [],
-          documentLinks: [],
-          marketingMaterialLinks: [],
-          propertyLinks: [],
-          ignoredLinks: [],
-        },
+        classifiedLinks: emptyClassifiedLinks(),
         error: `Website fetch failed with status ${res.status}`,
       };
     }
@@ -354,126 +392,20 @@ async function crawlWebsite(url) {
       crawled: false,
       readableText: "",
       links: [],
-      classifiedLinks: {
-        detectedLinks: [],
-        photoLinks: [],
-        documentLinks: [],
-        marketingMaterialLinks: [],
-        propertyLinks: [],
-        ignoredLinks: [],
-      },
+      classifiedLinks: emptyClassifiedLinks(),
       error: error.message,
     };
   }
 }
 
-function getExtractionSchema() {
+function emptyClassifiedLinks() {
   return {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      listing: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          agencyName: { type: "string" },
-          agencyContactName: { type: "string" },
-          agencyEmail: { type: "string" },
-          agencyPhone: { type: "string" },
-          sourceUrl: { type: "string" },
-          propertyTitle: { type: "string" },
-          propertyType: { type: "string" },
-          operation: { type: "string" },
-          address: { type: "string" },
-          city: { type: "string" },
-          neighborhood: { type: "string" },
-          bedrooms: { type: "string" },
-          bathrooms: { type: "string" },
-          guestToilets: { type: "string" },
-          surfaceSqm: { type: "string" },
-          plotSqm: { type: "string" },
-          terraceSqm: { type: "string" },
-          price: { type: "string" },
-          commission: { type: "string" },
-          description: { type: "string" },
-          internalNotes: { type: "string" },
-          detectedLinks: { type: "array", items: { type: "string" } },
-          photoLinks: { type: "array", items: { type: "string" } },
-          documentLinks: { type: "array", items: { type: "string" } },
-          missingFields: { type: "array", items: { type: "string" } },
-          confidence: { type: "number" },
-        },
-        required: [
-          "agencyName",
-          "agencyContactName",
-          "agencyEmail",
-          "agencyPhone",
-          "sourceUrl",
-          "propertyTitle",
-          "propertyType",
-          "operation",
-          "address",
-          "city",
-          "neighborhood",
-          "bedrooms",
-          "bathrooms",
-          "guestToilets",
-          "surfaceSqm",
-          "plotSqm",
-          "terraceSqm",
-          "price",
-          "commission",
-          "description",
-          "internalNotes",
-          "detectedLinks",
-          "photoLinks",
-          "documentLinks",
-          "missingFields",
-          "confidence"
-        ],
-      },
-
-      inmobalia: {
-        type: "object",
-        additionalProperties: true,
-        properties: {
-          main: { type: "object", additionalProperties: true },
-          descriptions: { type: "object", additionalProperties: true },
-          images: { type: "object", additionalProperties: true },
-          private: { type: "object", additionalProperties: true },
-          commission: { type: "object", additionalProperties: true },
-          attachments: { type: "object", additionalProperties: true },
-          legal: { type: "object", additionalProperties: true },
-          mlsPortals: { type: "object", additionalProperties: true },
-        },
-        required: [
-          "main",
-          "descriptions",
-          "images",
-          "private",
-          "commission",
-          "attachments",
-          "legal",
-          "mlsPortals"
-        ],
-      },
-
-      missingFields: {
-        type: "array",
-        items: { type: "string" },
-      },
-
-      verificationNotes: {
-        type: "array",
-        items: { type: "string" },
-      },
-    },
-    required: [
-      "listing",
-      "inmobalia",
-      "missingFields",
-      "verificationNotes"
-    ],
+    detectedLinks: [],
+    photoLinks: [],
+    documentLinks: [],
+    marketingMaterialLinks: [],
+    propertyLinks: [],
+    ignoredLinks: [],
   };
 }
 
