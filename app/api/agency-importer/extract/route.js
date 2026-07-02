@@ -6,6 +6,7 @@ import {
 import {
   extractLinksFromHtml,
   classifyLinks,
+  extractReadableTextFromHtml,
 } from "@/lib/emailHtmlParser";
 
 export async function POST(req) {
@@ -31,6 +32,18 @@ export async function POST(req) {
 
     const htmlLinks = rawHtml ? extractLinksFromHtml(rawHtml) : [];
     const classifiedHtmlLinks = classifyLinks(htmlLinks);
+
+    const readableHtmlText = rawHtml
+      ? extractReadableTextFromHtml(rawHtml)
+      : "";
+
+    const combinedReadableText = `
+VISIBLE EMAIL TEXT:
+${rawEmail}
+
+READABLE TEXT EXTRACTED FROM HTML:
+${readableHtmlText}
+`.trim();
 
     const schema = {
       type: "object",
@@ -117,9 +130,9 @@ Your job is to read an agency email and extract a CRM-ready property listing dra
 
 Rules:
 - This may be a real estate newsletter email with hidden characters, tracking text, footer text, unsubscribe text, copyright text, and button links.
-- Ignore invisible characters, repeated blank symbols, unsubscribe text, update preferences text, copyright footer, and generic marketing footer content.
+- Ignore invisible characters, repeated blank symbols, unsubscribe text, update preferences text, copyright footer, social media links, font links, tracking links, and generic marketing footer content.
 - Focus only on the property listing content, subject line, sender, contact details, commission, usage restrictions, URLs, and property facts.
-- Use both the visible email text and the extracted HTML links.
+- Use both the visible email text and the clean readable text extracted from the email HTML.
 - Hidden button links from the email HTML are very important.
 - Prioritize links classified as marketingMaterialLinks and propertyLinks.
 - Extract only information that is present or strongly implied.
@@ -128,15 +141,16 @@ Rules:
 - Convert prices such as "690.000 €" into "690000".
 - Convert areas such as "123 SQM BUILT" into "123".
 - Convert terrace areas such as "38 SQM TERRACE" into "38".
-- If the subject or body mentions "4% FOR YOU", "4% + IVA commission", or similar, set commission to that exact commission text.
+- If the subject or body mentions "4% FOR YOU", "4% + IVA commission", or similar, set commission to the most precise commission text, for example "4% + IVA".
 - If the email says "do not publish on property portals", include this in internalNotes.
 - If it says "exclusive listing", include that in internalNotes.
-- Detect all URLs in the email.
 - Put general property or agency URLs in detectedLinks.
 - Put image/photo URLs in photoLinks only if clearly photo/image links.
 - Put PDF/document/brochure/floorplan URLs in documentLinks.
 - Write the description in a polished Panorama real estate style.
 - Do not invent exact address, price, bedrooms, bathrooms, or surface.
+- Do not use social icons, Mailchimp tracking links, unsubscribe links, font URLs, or agency homepages as the main sourceUrl.
+- sourceUrl should be the most likely property page URL.
 - missingFields should include important CRM fields that are missing.
 - confidence must be 0 to 100 based on completeness and reliability.
 
@@ -146,19 +160,15 @@ For Panorama:
 - neighborhood can be a development or area such as "Higuerón West III".
 - city should be inferred only when very likely from the text. If municipality is unclear, leave it empty rather than guessing.
 - internalNotes should include commission, exclusivity, publishing restrictions, source warnings, and anything important for the team.
-- sourceUrl should be the most likely property page URL, not the agency homepage or unsubscribe link.
 
 Important CRM fields:
 ${requiredCrmFields.join(", ")}
 
-Links extracted from original email HTML:
+Links extracted and classified from original email HTML:
 ${JSON.stringify(classifiedHtmlLinks, null, 2)}
 
-Visible agency email text:
-${rawEmail}
-
-Original email HTML:
-${rawHtml ? rawHtml.slice(0, 40000) : ""}
+Clean readable email content:
+${combinedReadableText.slice(0, 35000)}
 `;
 
     const openAiRes = await fetch("https://api.openai.com/v1/responses", {
@@ -237,6 +247,7 @@ ${rawHtml ? rawHtml.slice(0, 40000) : ""}
       success: true,
       listing: mergedListing,
       htmlLinks: classifiedHtmlLinks,
+      readableHtmlTextPreview: readableHtmlText.slice(0, 5000),
       rawExtractedJson: parsed,
     });
   } catch (error) {
