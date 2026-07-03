@@ -12,6 +12,7 @@ import {
   normalizeInmobalia,
   mapListingToInmobalia,
 } from "@/lib/inmobaliaSchema";
+import { panoramaDescriptionPrompt } from "@/lib/panoramaDescriptionGuidelines";
 
 export async function POST(req) {
   try {
@@ -156,15 +157,22 @@ Main mapping:
 - If text mentions "luxury", "high-end", "premium", or similar, set main.luxury = true only if strongly supported.
 
 Descriptions mapping:
-- shortDescription should be a concise CRM title under 120 characters.
-- description should be a polished website-ready description.
-- extraDescription should include bullet-style highlights when available.
-- Fill views booleans when views are mentioned.
-- Fill condition when text says renovated, new, excellent condition, good condition, etc.
-- Fill features with amenities such as lift, storage room, private terrace, covered terrace, fitted wardrobes, concierge, gym, spa, gated community, underground parking, open-plan kitchen.
-- Fill furniture only if furnished/unfurnished is stated.
-- Fill rooms when master suite, dressing area, storage room, utility room, office, basement, guest apartment, etc. are stated.
-- Fill security when gated community, alarm, 24h security, concierge, secure entrance, etc. are stated.
+- The Inmobalia descriptions section is very important.
+- Follow Panorama's writing skill exactly.
+- Generate all 4 CMS description fields:
+  1. shortDescription
+  2. description
+  3. priceDescription
+  4. extraDescription
+- Generate these 4 fields in 5 languages:
+  English, Spanish, French, Dutch and German.
+- The top-level description fields must be the English version.
+- Store all language versions under inmobalia.descriptions.translations.
+- Do not use banned words or weak brochure language.
+- Do not invent features not supported by the email or website.
+- Keep the description elegant, sophisticated and aligned with Panorama's brand voice.
+
+${panoramaDescriptionPrompt}
 
 Images mapping:
 - imageUrls should include only likely property photos.
@@ -230,7 +238,45 @@ Return exactly this JSON structure:
   },
   "inmobalia": {
     "main": {},
-    "descriptions": {},
+    "descriptions": {
+      "language": "Multilingual",
+      "shortDescription": "",
+      "description": "",
+      "priceDescription": "",
+      "extraDescription": "",
+      "translations": {
+        "english": {
+          "shortDescription": "",
+          "description": "",
+          "priceDescription": "",
+          "extraDescription": ""
+        },
+        "spanish": {
+          "shortDescription": "",
+          "description": "",
+          "priceDescription": "",
+          "extraDescription": ""
+        },
+        "french": {
+          "shortDescription": "",
+          "description": "",
+          "priceDescription": "",
+          "extraDescription": ""
+        },
+        "dutch": {
+          "shortDescription": "",
+          "description": "",
+          "priceDescription": "",
+          "extraDescription": ""
+        },
+        "german": {
+          "shortDescription": "",
+          "description": "",
+          "priceDescription": "",
+          "extraDescription": ""
+        }
+      }
+    },
     "images": {},
     "private": {},
     "commission": {},
@@ -380,7 +426,8 @@ ${combinedReadableText.slice(0, 45000)}
     brainLog.push("6. Compared email and website data");
     brainLog.push("7. Produced Inmobalia-ready draft");
     brainLog.push("8. Applied deterministic Inmobalia enrichment rules");
-    brainLog.push("9. Prepared result for UI and Supabase saving");
+    brainLog.push("9. Applied Panorama multilingual description guidelines");
+    brainLog.push("10. Prepared result for UI and Supabase saving");
 
     return NextResponse.json({
       success: true,
@@ -504,7 +551,9 @@ function enrichInmobaliaFromText(inmobalia, text, listing, imageUrls) {
     enriched.main.garage = enriched.main.garage || "Garage";
   }
 
-  const parkingMatch = text.match(/(\d+|one|two|three|four)\s+(underground\s+)?parking spaces?/i);
+  const parkingMatch = text.match(
+    /(\d+|one|two|three|four)\s+(underground\s+)?parking spaces?/i
+  );
   if (parkingMatch && !enriched.main.parkingSpaces) {
     enriched.main.parkingSpaces = wordNumberToDigit(parkingMatch[1]);
   }
@@ -524,46 +573,176 @@ function enrichInmobaliaFromText(inmobalia, text, listing, imageUrls) {
   }
 
   enriched.descriptions.shortDescription =
-    enriched.descriptions.shortDescription || listing.propertyTitle || "";
+    enriched.descriptions.shortDescription ||
+    enriched.descriptions.translations?.english?.shortDescription ||
+    listing.propertyTitle ||
+    "";
+
   enriched.descriptions.description =
-    enriched.descriptions.description || listing.description || "";
+    enriched.descriptions.description ||
+    enriched.descriptions.translations?.english?.description ||
+    listing.description ||
+    "";
+
+  enriched.descriptions.priceDescription =
+    enriched.descriptions.priceDescription ||
+    enriched.descriptions.translations?.english?.priceDescription ||
+    "";
+
+  enriched.descriptions.extraDescription =
+    enriched.descriptions.extraDescription ||
+    enriched.descriptions.translations?.english?.extraDescription ||
+    "";
+
+  if (!enriched.descriptions.translations.english.shortDescription) {
+    enriched.descriptions.translations.english.shortDescription =
+      enriched.descriptions.shortDescription;
+  }
+
+  if (!enriched.descriptions.translations.english.description) {
+    enriched.descriptions.translations.english.description =
+      enriched.descriptions.description;
+  }
+
+  if (!enriched.descriptions.translations.english.priceDescription) {
+    enriched.descriptions.translations.english.priceDescription =
+      enriched.descriptions.priceDescription;
+  }
+
+  if (!enriched.descriptions.translations.english.extraDescription) {
+    enriched.descriptions.translations.english.extraDescription =
+      enriched.descriptions.extraDescription;
+  }
 
   if (/country view/.test(t)) enriched.descriptions.views.country = true;
   if (/golf view|golf views/.test(t)) enriched.descriptions.views.golf = true;
   if (/marina view/.test(t)) enriched.descriptions.views.marina = true;
-  if (/panoramic view|panoramic views/.test(t)) enriched.descriptions.views.panoramic = true;
+  if (/panoramic view|panoramic views/.test(t))
+    enriched.descriptions.views.panoramic = true;
   if (/pool view/.test(t)) enriched.descriptions.views.pool = true;
   if (/street view/.test(t)) enriched.descriptions.views.street = true;
   if (/garden view|garden views/.test(t)) enriched.descriptions.views.garden = true;
   if (/lake view/.test(t)) enriched.descriptions.views.lake = true;
-  if (/mountain view|mountain views/.test(t)) enriched.descriptions.views.mountain = true;
-  if (/partial sea view|partial sea views/.test(t)) enriched.descriptions.views.partialSea = true;
+  if (/mountain view|mountain views/.test(t))
+    enriched.descriptions.views.mountain = true;
+  if (/partial sea view|partial sea views/.test(t))
+    enriched.descriptions.views.partialSea = true;
   if (/sea view|sea views/.test(t)) enriched.descriptions.views.sea = true;
   if (/urban view/.test(t)) enriched.descriptions.views.urban = true;
 
-  addIfMentioned(enriched.descriptions.features, t, "Private terrace", /private terrace/);
-  addIfMentioned(enriched.descriptions.features, t, "Covered terrace", /covered terrace/);
-  addIfMentioned(enriched.descriptions.features, t, "Storage room", /storage room/);
-  addIfMentioned(enriched.descriptions.features, t, "Fitted wardrobes", /fitted wardrobes/);
-  addIfMentioned(enriched.descriptions.features, t, "Concierge service", /concierge/);
-  addIfMentioned(enriched.descriptions.features, t, "Underground parking", /underground parking/);
-  addIfMentioned(enriched.descriptions.features, t, "Open-plan kitchen", /open-plan|open plan/);
-  addIfMentioned(enriched.descriptions.features, t, "Fully fitted kitchen", /fully fitted.*kitchen|fitted contemporary kitchen/);
-  addIfMentioned(enriched.descriptions.features, t, "Breakfast bar", /breakfast bar/);
-  addIfMentioned(enriched.descriptions.features, t, "Floor-to-ceiling windows", /floor-to-ceiling|floor to ceiling/);
-  addIfMentioned(enriched.descriptions.features, t, "Gated community", /gated community/);
+  addIfMentioned(
+    enriched.descriptions.features,
+    t,
+    "Private terrace",
+    /private terrace/
+  );
+  addIfMentioned(
+    enriched.descriptions.features,
+    t,
+    "Covered terrace",
+    /covered terrace/
+  );
+  addIfMentioned(
+    enriched.descriptions.features,
+    t,
+    "Storage room",
+    /storage room/
+  );
+  addIfMentioned(
+    enriched.descriptions.features,
+    t,
+    "Fitted wardrobes",
+    /fitted wardrobes/
+  );
+  addIfMentioned(
+    enriched.descriptions.features,
+    t,
+    "Concierge service",
+    /concierge/
+  );
+  addIfMentioned(
+    enriched.descriptions.features,
+    t,
+    "Underground parking",
+    /underground parking/
+  );
+  addIfMentioned(
+    enriched.descriptions.features,
+    t,
+    "Open-plan kitchen",
+    /open-plan|open plan/
+  );
+  addIfMentioned(
+    enriched.descriptions.features,
+    t,
+    "Fully fitted kitchen",
+    /fully fitted.*kitchen|fitted contemporary kitchen/
+  );
+  addIfMentioned(
+    enriched.descriptions.features,
+    t,
+    "Breakfast bar",
+    /breakfast bar/
+  );
+  addIfMentioned(
+    enriched.descriptions.features,
+    t,
+    "Floor-to-ceiling windows",
+    /floor-to-ceiling|floor to ceiling/
+  );
+  addIfMentioned(
+    enriched.descriptions.features,
+    t,
+    "Gated community",
+    /gated community/
+  );
 
   addIfMentioned(enriched.descriptions.rooms, t, "Master suite", /master suite/);
-  addIfMentioned(enriched.descriptions.rooms, t, "Dressing area", /dressing area|dressing room/);
+  addIfMentioned(
+    enriched.descriptions.rooms,
+    t,
+    "Dressing area",
+    /dressing area|dressing room/
+  );
   addIfMentioned(enriched.descriptions.rooms, t, "Storage room", /storage room/);
 
-  addIfMentioned(enriched.descriptions.security, t, "Gated community", /gated community/);
-  addIfMentioned(enriched.descriptions.security, t, "Concierge service", /concierge/);
-  addIfMentioned(enriched.descriptions.security, t, "Secure community", /secure gated|secure community/);
+  addIfMentioned(
+    enriched.descriptions.security,
+    t,
+    "Gated community",
+    /gated community/
+  );
+  addIfMentioned(
+    enriched.descriptions.security,
+    t,
+    "Concierge service",
+    /concierge/
+  );
+  addIfMentioned(
+    enriched.descriptions.security,
+    t,
+    "Secure community",
+    /secure gated|secure community/
+  );
 
-  addIfMentioned(enriched.descriptions.condition, t, "Excellent condition", /excellent condition/);
-  addIfMentioned(enriched.descriptions.condition, t, "Recently renovated", /renovated|refurbished/);
-  addIfMentioned(enriched.descriptions.condition, t, "New development", /new development|brand new/);
+  addIfMentioned(
+    enriched.descriptions.condition,
+    t,
+    "Excellent condition",
+    /excellent condition/
+  );
+  addIfMentioned(
+    enriched.descriptions.condition,
+    t,
+    "Recently renovated",
+    /renovated|refurbished/
+  );
+  addIfMentioned(
+    enriched.descriptions.condition,
+    t,
+    "New development",
+    /new development|brand new/
+  );
 
   if (/fully furnished/.test(t)) {
     addUnique(enriched.descriptions.furniture, "Fully furnished");
@@ -582,10 +761,8 @@ function enrichInmobaliaFromText(inmobalia, text, listing, imageUrls) {
 
   enriched.private.seller =
     enriched.private.seller || listing.agencyName || "";
-  enriched.private.zone =
-    enriched.private.zone || listing.neighborhood || "";
-  enriched.private.address =
-    enriched.private.address || listing.address || "";
+  enriched.private.zone = enriched.private.zone || listing.neighborhood || "";
+  enriched.private.address = enriched.private.address || listing.address || "";
   enriched.private.internalNotes = uniqueText([
     enriched.private.internalNotes,
     listing.internalNotes,
@@ -595,9 +772,15 @@ function enrichInmobaliaFromText(inmobalia, text, listing, imageUrls) {
     enriched.commission.saleCommission || listing.commission || "";
   enriched.commission.internalComments =
     enriched.commission.internalComments ||
-    (listing.commission ? `Commission detected from source: ${listing.commission}` : "");
+    (listing.commission
+      ? `Commission detected from source: ${listing.commission}`
+      : "");
 
-  if (/do not publish.*property portals|do not publish it on property portals/i.test(text)) {
+  if (
+    /do not publish.*property portals|do not publish it on property portals/i.test(
+      text
+    )
+  ) {
     enriched.mlsPortals.portalRestrictions =
       enriched.mlsPortals.portalRestrictions ||
       "Do not publish it on property portals.";
